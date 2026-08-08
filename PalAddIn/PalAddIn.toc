@@ -1,0 +1,18 @@
+## Interface: 20506
+## Title: PalAddIn
+## Notes: Paladin blessing assistant for five-player groups
+## Notes-deDE: Paladin-Segen-Assistent für Fünfergruppen
+## Author: Oliver Tigges
+## Version: 0.1.0
+## SavedVariablesPerCharacter: PalAddInDB
+## X-Category: Combat
+## X-License: MIT
+
+Locales\enUS.lua
+Locales\deDE.lua
+Database.lua
+Compat.lua
+Blessings.lua
+Group.lua
+UI.lua
+Core.lua

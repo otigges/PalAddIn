@@ -1,0 +1,29 @@
+# Line endings are pinned here rather than left to each developer's
+# core.autocrlf setting, so a clone produces identical files everywhere.
+
+# Default: detect text, store it as LF in the repository, check it out as LF.
+* text=auto eol=lf
+
+# Lua and the .toc manifest: LF. The WoW client parses either, but keeping one
+# convention avoids whole-file diffs when someone edits on a different machine.
+*.lua   text eol=lf
+*.toc   text eol=lf
+*.xml   text eol=lf
+*.md    text eol=lf
+
+# Windows-native scripts keep CRLF. The batch interpreter is genuinely
+# line-ending sensitive, and CRLF is the convention for PowerShell on Windows.
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.psd1  text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Never touch these.
+*.zip   binary
+*.blp   binary
+*.tga   binary
+*.png   binary
+*.jpg   binary
+*.ogg   binary
+*.mp3   binary

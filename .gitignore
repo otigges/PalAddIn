@@ -1,3 +1,9 @@
+# Local machine configuration (WoW install path)
+.env.local
+
+# Packaged releases
+dist/
+
 # Compiled Lua sources
 luac.out
 
