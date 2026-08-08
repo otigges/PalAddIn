@@ -29,9 +29,13 @@ target/mana/damage assistants. See [Roadmap](#roadmap).
 .\scripts\install.ps1
 ```
 
-That symlinks the addon into your WoW AddOns folder, so editing a file here and typing
-`/reload` in-game is the whole loop. Creating a symlink needs **Developer Mode**
-(Settings → System → For developers) or an elevated PowerShell, once. Without either:
+That links the addon into your WoW AddOns folder, so editing a file here and typing `/reload`
+in-game is the whole loop. No elevation and no Developer Mode needed — it creates a **directory
+junction**, which the game follows exactly like a symlink. (It falls back to a real symlink if
+the junction fails, which happens when the repository sits on a network share or a non-NTFS
+volume; a symlink does need Developer Mode or an elevated shell.)
+
+If neither works:
 
 ```powershell
 .\scripts\install.ps1 -Mode Copy     # works anywhere; re-run after every change

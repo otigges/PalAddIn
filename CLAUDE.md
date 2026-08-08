@@ -17,7 +17,7 @@ and **no Lua toolchain installed on this machine**, so a change cannot be syntax
 Verify in the game client:
 
 ```powershell
-.\scripts\install.ps1              # symlink (default); -Mode Copy if symlinks are unavailable
+.\scripts\install.ps1              # links via directory junction; -Mode Copy as a fallback
 .\scripts\package.ps1              # dist\PalAddIn-<version>.zip for distribution
 ```
 

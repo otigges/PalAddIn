@@ -116,9 +116,9 @@ if (Test-Path $target) {
     $isLink = $existing.Attributes -band [IO.FileAttributes]::ReparsePoint
 
     if ($isLink) {
-        # Delete the link only. Remove-Item -Recurse on a reparse point can
-        # follow it and wipe the target on Windows PowerShell 5.1.
-        Write-Host "Removing existing symlink at $target" -ForegroundColor DarkGray
+        # Delete the link only (symlink or junction). Remove-Item -Recurse on a
+        # reparse point can follow it and wipe the target on PowerShell 5.1.
+        Write-Host "Removing existing link at $target" -ForegroundColor DarkGray
         [System.IO.Directory]::Delete($target, $false)
     }
     elseif ($Force) {
@@ -127,7 +127,7 @@ if (Test-Path $target) {
     }
     else {
         throw @"
-'$target' already exists and is a real folder, not a symlink.
+'$target' already exists and is a real folder, not a link.
 Re-run with -Force to replace it. Check first that it holds nothing you want —
 this deletes it. (Your settings are safe either way: WoW stores them under
 WTF\Account\...\SavedVariables\PalAddIn.lua, not in the addon folder.)
@@ -136,20 +136,36 @@ WTF\Account\...\SavedVariables\PalAddIn.lua, not in the addon folder.)
 }
 
 if ($Mode -eq 'Link') {
-    try {
-        New-Item -ItemType SymbolicLink -Path $target -Target $source -ErrorAction Stop | Out-Null
-    }
-    catch {
-        throw @"
-Could not create the symlink: $($_.Exception.Message)
+    # A junction is tried first because it needs no elevation and no Developer
+    # Mode, while the game follows it exactly like a symlink. It only works for
+    # directories on local volumes, so a symlink is the fallback for a repo on
+    # a network share or a different kind of mount.
+    $linkType = $null
+    $errors = @()
 
-Creating symlinks needs one of:
-  - Developer Mode on (Settings > System > For developers), or
-  - an elevated PowerShell.
-Otherwise install a plain copy instead:  .\scripts\install.ps1 -Mode Copy
+    foreach ($candidate in @('Junction', 'SymbolicLink')) {
+        try {
+            New-Item -ItemType $candidate -Path $target -Target $source -ErrorAction Stop | Out-Null
+            $linkType = $candidate
+            break
+        }
+        catch {
+            $errors += "  $candidate`: $($_.Exception.Message)"
+        }
+    }
+
+    if (-not $linkType) {
+        throw @"
+Could not link '$target' to the repository.
+$($errors -join "`n")
+
+A junction normally works without any special privileges. If both failed, the
+repository is probably on a network share or a non-NTFS volume. Install a plain
+copy instead:  .\scripts\install.ps1 -Mode Copy
 "@
     }
-    Write-Host "Linked $target -> $source" -ForegroundColor Green
+
+    Write-Host "Linked ($linkType) $target -> $source" -ForegroundColor Green
     Write-Host "Edit the Lua files here and type /reload in-game to apply." -ForegroundColor DarkGray
 }
 else {
