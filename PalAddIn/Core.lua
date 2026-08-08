@@ -54,6 +54,7 @@ end
 
 handlers.PLAYER_LOGIN = function()
     ns.playerRealm = Compat.GetPlayerRealm()
+    ns.Debug("client build %s, aura API: %s", tostring(select(2, GetBuildInfo())), Compat.auraApi)
     Blessings:Build()
     Group:Update()
     UI:Initialize()
@@ -153,6 +154,7 @@ end
 commands.reset = function()
     Database:ResetUI()
     UI:ApplyLayout()
+    UI:Show()
     print_(L["UI position reset."])
 end
 

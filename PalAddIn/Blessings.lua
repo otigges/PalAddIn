@@ -106,9 +106,7 @@ function Blessings:GetIcon(key)
     return key and displayIcon[key] or nil
 end
 
--- Finds the first paladin blessing on the unit. Returns key, expirationTime,
--- duration; or nil when the unit has no blessing at all.
-function Blessings:FindOnUnit(unit)
+local function scanUnit(unit)
     for index = 1, 40 do
         local name, _, duration, expirationTime, _, spellID = Compat.GetAura(unit, index, "HELPFUL")
         if not name then break end
@@ -119,6 +117,30 @@ function Blessings:FindOnUnit(unit)
         end
     end
     return nil
+end
+
+-- Set once if the aura API turns out to be unusable on this client, so a broken
+-- scan degrades into "no blessing detected" instead of erroring on every frame.
+local auraScanFailed = false
+
+-- Finds the first paladin blessing on the unit. Returns key, expirationTime,
+-- duration; or nil when the unit has no blessing at all.
+function Blessings:FindOnUnit(unit)
+    if auraScanFailed or Compat.auraApi == "none" then return nil end
+
+    local ok, key, expirationTime, duration = pcall(scanUnit, unit)
+    if not ok then
+        -- Reported once, and to chat rather than via error(), because WoW hides
+        -- Lua errors unless scriptErrors is on — which is how this would
+        -- otherwise present as "the addon just stopped updating".
+        auraScanFailed = true
+        ns.Print("|cffff5555Aura scan failed|r using " .. tostring(Compat.auraApi))
+        ns.Print("Error: " .. tostring(key))
+        ns.Print("Blessing status is disabled for this session. Please report this.")
+        return nil
+    end
+
+    return key, expirationTime, duration
 end
 
 -- Status codes returned by GetStatus. The UI maps these to text and colors.

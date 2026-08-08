@@ -2,6 +2,7 @@
 ## Title: PalAddIn
 ## Notes: Paladin blessing assistant for five-player groups
 ## Notes-deDE: Paladin-Segen-Assistent für Fünfergruppen
+## IconTexture: Interface\AddOns\PalAddIn\Textures\icon
 ## Author: Oliver Tigges
 ## Version: 0.1.0
 ## SavedVariablesPerCharacter: PalAddInDB

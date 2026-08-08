@@ -86,9 +86,12 @@ function Database:SetAssignment(playerKey, blessingKey)
     end
 end
 
+-- Also unhides the window: this is the command someone runs when they have
+-- lost track of it, so leaving it hidden would defeat the purpose.
 function Database:ResetUI()
     local ui = self.db.ui
     ui.point = nil
     ui.scale = defaults.ui.scale
     ui.locked = false
+    ui.shown = true
 end

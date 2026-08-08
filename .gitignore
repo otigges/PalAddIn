@@ -4,6 +4,10 @@
 # Packaged releases
 dist/
 
+# Scratch output from scripts\New-Image.ps1. Assets the addon ships get
+# promoted into PalAddIn\Textures\ deliberately.
+assets/generated/
+
 # Compiled Lua sources
 luac.out
 

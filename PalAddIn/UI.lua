@@ -12,9 +12,23 @@ local Group = ns.Group
 local Compat = ns.Compat
 
 local ROW_HEIGHT = 20
-local FRAME_WIDTH = 300
+local FRAME_WIDTH = 380
 local HEADER_HEIGHT = 42
 local MAX_ROWS = 5
+
+-- Column offsets within a row, in row-local coordinates. Wide enough for the
+-- longest German blessing name ("Segen der Erlösung") at the small font.
+local COL_NAME = { x = 2, w = 100 }
+local COL_BLESSING = { x = 106, w = 150 }
+local COL_STATUS = { x = 262, w = 100 }
+
+-- Row background tint, so a missing blessing is visible from across the screen
+-- rather than only as small red text.
+local ROW_TINT = {
+    MISSING  = { 0.65, 0.10, 0.10, 0.55 },
+    EXPIRING = { 0.65, 0.42, 0.05, 0.45 },
+    WRONG    = { 0.60, 0.30, 0.05, 0.45 },
+}
 
 local STATUS_COLORS = {
     ACTIVE     = { 0.25, 0.85, 0.30 },
@@ -41,6 +55,7 @@ local STATUS_TEXT = {
 local frame, menu
 local rows = {}
 local lastSoundAt = 0
+local scratchAttention = {}
 
 local function addBackground(target, r, g, b, a)
     local texture = target:CreateTexture(nil, "BACKGROUND")
@@ -55,25 +70,30 @@ end
 
 local function createMenu()
     menu = CreateFrame("Frame", "PalAddInBlessingMenu", UIParent)
-    menu:SetFrameStrata("DIALOG")
-    menu:SetSize(160, 10)
+    menu:SetSize(COL_BLESSING.w + 30, 10)
     menu:Hide()
     addBackground(menu, 0.05, 0.05, 0.07, 0.95)
 
     menu.buttons = {}
-    menu:SetScript("OnHide", function(self) self.playerKey = nil end)
 
-    -- No global click-away handler exists without hooking Blizzard frames, so
-    -- the menu closes shortly after the mouse leaves it.
-    menu:SetScript("OnUpdate", function(self, elapsed)
-        if self:IsMouseOver(8, -8, -8, 8) then
-            self.awayFor = 0
-        else
-            self.awayFor = (self.awayFor or 0) + elapsed
-            if self.awayFor > 1.5 then self:Hide() end
-        end
+    -- A full-screen invisible button behind the menu closes it on any click
+    -- elsewhere. This replaces an earlier timed "hide once the mouse leaves",
+    -- which closed the menu while the user was still deciding.
+    local catcher = CreateFrame("Button", nil, UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("DIALOG")
+    catcher:RegisterForClicks("AnyUp")
+    catcher:Hide()
+    catcher:SetScript("OnClick", function() menu:Hide() end)
+    -- Above the catcher, so the menu's own buttons still receive their clicks.
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    menu.catcher = catcher
+
+    menu:SetScript("OnShow", function(self) self.catcher:Show() end)
+    menu:SetScript("OnHide", function(self)
+        self.playerKey = nil
+        self.catcher:Hide()
     end)
-    menu:SetScript("OnShow", function(self) self.awayFor = 0 end)
 
     local entries = {}
     for _, key in ipairs(Blessings.ORDER) do
@@ -83,7 +103,7 @@ local function createMenu()
 
     for index, key in ipairs(entries) do
         local button = CreateFrame("Button", nil, menu)
-        button:SetSize(152, 18)
+        button:SetSize(COL_BLESSING.w + 22, 18)
         button:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (index - 1) * 18)
 
         local highlight = button:CreateTexture(nil, "HIGHLIGHT")
@@ -139,26 +159,37 @@ local function createRow(index, parent)
     row:SetSize(FRAME_WIDTH - 16, ROW_HEIGHT)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -(HEADER_HEIGHT + (index - 1) * ROW_HEIGHT))
 
+    row.bg = row:CreateTexture(nil, "BORDER")
+    row.bg:SetAllPoints(row)
+    row.bg:SetColorTexture(0, 0, 0, 0)
+
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.name:SetPoint("LEFT", row, "LEFT", 2, 0)
-    row.name:SetWidth(84)
+    row.name:SetPoint("LEFT", row, "LEFT", COL_NAME.x, 0)
+    row.name:SetWidth(COL_NAME.w)
     row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
 
     row.button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.button:SetSize(110, 18)
-    row.button:SetPoint("LEFT", row, "LEFT", 88, 0)
+    row.button:SetSize(COL_BLESSING.w, 18)
+    row.button:SetPoint("LEFT", row, "LEFT", COL_BLESSING.x, 0)
     row.button:SetScript("OnClick", function(self)
         if self.playerKey then
             UI:ShowBlessingMenu(self, self.playerKey)
         end
     end)
     local buttonText = row.button:GetFontString()
-    if buttonText then buttonText:SetFontObject("GameFontHighlightSmall") end
+    if buttonText then
+        buttonText:SetFontObject("GameFontHighlightSmall")
+        -- Truncate with an ellipsis instead of spilling past the button edge.
+        buttonText:SetWidth(COL_BLESSING.w - 10)
+        buttonText:SetWordWrap(false)
+    end
 
     row.status = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.status:SetPoint("LEFT", row, "LEFT", 202, 0)
-    row.status:SetWidth(82)
+    row.status:SetPoint("LEFT", row, "LEFT", COL_STATUS.x, 0)
+    row.status:SetWidth(COL_STATUS.w)
     row.status:SetJustifyH("LEFT")
+    row.status:SetWordWrap(false)
 
     return row
 end
@@ -178,16 +209,22 @@ local function createFrame()
 
     frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 2)
-    frame.close:SetScript("OnClick", function() UI:Hide() end)
+    frame.close:SetScript("OnClick", function()
+        UI:Hide()
+        -- Hiding persists across sessions, so without this the window is simply
+        -- gone with no on-screen clue how to get it back.
+        ns.Print(L["Window hidden. Type /paladdin to show it again."])
+    end)
 
+    -- Headers line up with the row columns; rows start at x = 8 inside the frame.
     local header = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -26)
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 8 + COL_NAME.x, -26)
     header:SetText(L["Player"])
     local headerBlessing = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    headerBlessing:SetPoint("TOPLEFT", frame, "TOPLEFT", 96, -26)
+    headerBlessing:SetPoint("TOPLEFT", frame, "TOPLEFT", 8 + COL_BLESSING.x, -26)
     headerBlessing:SetText(L["Blessing"])
     local headerStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    headerStatus:SetPoint("TOPLEFT", frame, "TOPLEFT", 210, -26)
+    headerStatus:SetPoint("TOPLEFT", frame, "TOPLEFT", 8 + COL_STATUS.x, -26)
     headerStatus:SetText(L["Status"])
 
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -214,7 +251,13 @@ end
 function UI:Initialize()
     if not frame then createFrame() end
     self:ApplyLayout()
-    if ns.Database:UI().shown then self:Show() else self:Hide() end
+
+    local ui = ns.Database:UI()
+    ns.Debug("UI initialized: shown=%s scale=%s point=%s",
+        tostring(ui.shown), tostring(ui.scale),
+        ui.point and (ui.point.point .. " " .. tostring(ui.point.x) .. "," .. tostring(ui.point.y)) or "default")
+
+    if ui.shown then self:Show() else self:Hide() end
 end
 
 function UI:ApplyLayout()
@@ -244,6 +287,8 @@ function UI:Refresh()
     local settings = ns.Database:Settings()
     local members = Group.members
     local missingCount = 0
+    -- Reused between refreshes; this runs once a second.
+    local needsAttention = wipe(scratchAttention)
 
     for index = 1, MAX_ROWS do
         local row = rows[index]
@@ -277,23 +322,53 @@ function UI:Refresh()
             row.status:SetText(text)
             row.status:SetTextColor(color[1], color[2], color[3])
 
-            if status == "MISSING" or status == "EXPIRING" or status == "WRONG" then
+            local tint = ROW_TINT[status]
+            if tint then
+                row.bg:SetColorTexture(tint[1], tint[2], tint[3], tint[4])
                 missingCount = missingCount + 1
+                needsAttention[#needsAttention + 1] = member.key or member.name
+            else
+                row.bg:SetColorTexture(0, 0, 0, 0)
             end
         end
     end
 
     frame.empty:SetShown(#members == 0)
 
-    -- Reminder sound: out of combat only, and throttled so it cannot turn into
-    -- a machine gun while a blessing is being re-applied across the party.
-    if settings.soundEnabled and missingCount > 0 and not InCombatLockdown() then
-        local now = GetTime()
-        if now - lastSoundAt > 10 then
-            lastSoundAt = now
-            PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION or 88)
-        end
+    -- The title doubles as the at-a-glance summary, so a glance at the window
+    -- answers "do I need to bless anyone" without reading every row.
+    if missingCount > 0 then
+        frame.title:SetText(L["PalAddIn"] .. " - " .. string.format(L["%d missing"], missingCount))
+        frame.title:SetTextColor(1, 0.45, 0.15)
+    else
+        frame.title:SetText(L["PalAddIn"])
+        frame.title:SetTextColor(1, 0.82, 0)
     end
+
+    self:UpdateReminder(needsAttention, settings)
+end
+
+-- Sound fires when the set of players needing attention *changes*, not on a
+-- fixed timer, so it prompts once per problem instead of nagging every 10s.
+local lastSignature = ""
+
+function UI:UpdateReminder(needsAttention, settings)
+    local signature = table.concat(needsAttention, "|")
+    if signature == lastSignature then return end
+
+    local wasEmpty = lastSignature == ""
+    lastSignature = signature
+
+    if signature == "" or not settings.soundEnabled then return end
+
+    -- Only announce genuinely new problems, and only out of combat: mid-fight
+    -- is exactly when re-blessing is not the right call.
+    if not wasEmpty or InCombatLockdown() then return end
+
+    local now = GetTime()
+    if now - lastSoundAt < 5 then return end
+    lastSoundAt = now
+    PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION or 88)
 end
 
 function UI:Show()

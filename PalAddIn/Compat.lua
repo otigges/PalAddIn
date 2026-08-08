@@ -9,21 +9,33 @@ ns.Compat = Compat
 local C_UnitAuras = _G.C_UnitAuras
 local C_Spell = _G.C_Spell
 
+-- Which aura API this client offers is resolved once, at load, so the choice is
+-- visible in debug output instead of being re-guessed on every scan.
+local getAuraDataByIndex = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+local unitAura = _G.UnitAura
+
+Compat.auraApi = (getAuraDataByIndex and "C_UnitAuras.GetAuraDataByIndex")
+    or (unitAura and "UnitAura")
+    or "none"
+
 -- Returns: name, icon, duration, expirationTime, sourceUnit, spellId
 -- duration/expirationTime are 0 for permanent auras.
+-- Returns nil both for "no aura at this index" and for an unusable API, so the
+-- caller's scan loop terminates either way instead of erroring.
 function Compat.GetAura(unit, index, filter)
-    if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-        local data = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
+    if getAuraDataByIndex then
+        local data = getAuraDataByIndex(unit, index, filter)
         if not data then return nil end
         return data.name, data.icon, data.duration, data.expirationTime, data.sourceUnit, data.spellId
     end
 
-    local UnitAura = _G.UnitAura
-    if not UnitAura then return nil end
+    if unitAura then
+        local name, icon, _, _, duration, expirationTime, source, _, _, spellId = unitAura(unit, index, filter)
+        if not name then return nil end
+        return name, icon, duration, expirationTime, source, spellId
+    end
 
-    local name, icon, _, _, duration, expirationTime, source, _, _, spellId = UnitAura(unit, index, filter)
-    if not name then return nil end
-    return name, icon, duration, expirationTime, source, spellId
+    return nil
 end
 
 -- Returns the localized spell name for a spell ID, or nil if the client does
